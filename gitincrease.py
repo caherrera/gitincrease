@@ -2,6 +2,8 @@
 import json
 import subprocess
 import os
+import sys
+
 
 dirpath = os.getcwd()
 foldername = os.path.basename(dirpath)
@@ -40,37 +42,45 @@ def git_commit_push_tag(d,version,comments):
     proc = subprocess.Popen(['git','-C', d, 'push','--tags'])
     proc.wait()
     
+def do_all(check_parent):    
+    comments = input("Add comments ?\n")
+    version=git_tag_add(git_tag(dirpath))
+
+    meta = 'metadata.json'
+    if os.path.exists(meta):
+        with open(meta) as json_file:
+            data = json.load(json_file)
+        data['version'] = version    
+    
+        with open(meta,'w') as json_file:
+            json.dump(data,json_file,indent=2)
+
+    proc = subprocess.Popen(['git', 'add',meta])
+    git_commit_push_tag(dirpath,version,comments)
 
 
-comments = input("Add comments ?\n")
+    if check_parent:
+        pdir=git_parent(dirpath)
+        pversion = git_tag_add(git_tag(pdir))
+        pcomment = '"updating ' + foldername + ' to version ' + version + '"'
 
-meta = 'metadata.json'
-
-with open(meta) as json_file:
-    data = json.load(json_file)
-
-
-#works in python 3.0+
-version=git_tag_add(git_tag(dirpath))
-data['version'] = version
-
-# print(data['version'])
-
-with open(meta,'w') as json_file:
-    json.dump(data,json_file,indent=2)
-
-proc = subprocess.Popen(['git', 'add',meta])
-git_commit_push_tag(dirpath,version,comments)
+        proc = subprocess.Popen(['git','-C', pdir, 'add',dirpath])
+        proc.wait()
+        git_commit_push_tag(pdir,pversion,pcomment)
 
 
+    print("DONE!\n")
 
-pdir=git_parent(dirpath)
-pversion = git_tag_add(git_tag(pdir))
-pcomment = '"updating ' + foldername + ' to version ' + version + '"'
 
-proc = subprocess.Popen(['git','-C', pdir, 'add',dirpath])
+proc = subprocess.Popen(['git','-C', dirpath, 'status','-s'],stdout=subprocess.PIPE)
 proc.wait()
-git_commit_push_tag(pdir,pversion,pcomment)
+line = proc.stdout.readline().decode("utf-8")
+if len(sys.argv)==2:
+    check_parent = 1
+else:
+    check_parent = 0
 
-
-print("DONE!\n")
+if line:
+    do_all(check_parent)
+else:
+    print('nothing todo')
